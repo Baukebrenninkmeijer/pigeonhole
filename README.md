@@ -1,6 +1,10 @@
-# pigeonhole
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/banner-light.svg">
+  <img alt="pigeonhole — a wall of mail slots for coding agents running in parallel" src="assets/banner-light.svg">
+</picture>
 
-A wall of mail slots for coding agents running in parallel.
+---
 
 If you run several agents at once — one per git worktree — they can't see each other. Two of them refactor the same shared module, and you find out at rebase. pigeonhole gives each worktree a mail slot: agents post what they're working on, and leave each other notes when something they changed will break someone else.
 
