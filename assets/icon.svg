@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="pigeonhole: a 3x3 grid of mail cubbies, one holding a note">
+  <title>pigeonhole</title>
+
+  <!-- Cabinet: solid, flat, no gradient, no corner sheen -->
+  <rect x="0" y="0" width="512" height="512" fill="#1f1b16"/>
+
+  <!-- 3x3 grid of open cubbies. Gaps between cells read as the cabinet's
+       dividers, so the grid holds up even when scaled down to a favicon. -->
+  <!-- row 0 -->
+  <rect x="72"  y="72"  width="106" height="106" rx="6" fill="#f2e9d8"/>
+  <rect x="203" y="72"  width="106" height="106" rx="6" fill="#f2e9d8"/>
+  <rect x="334" y="72"  width="106" height="106" rx="6" fill="#f2e9d8"/>
+  <!-- row 1 -->
+  <rect x="72"  y="203" width="106" height="106" rx="6" fill="#f2e9d8"/>
+  <rect x="203" y="203" width="106" height="106" rx="6" fill="#f2e9d8"/>
+  <rect x="334" y="203" width="106" height="106" rx="6" fill="#f2e9d8"/>
+  <!-- row 2 -->
+  <rect x="72"  y="334" width="106" height="106" rx="6" fill="#f2e9d8"/>
+  <rect x="203" y="334" width="106" height="106" rx="6" fill="#f2e9d8"/>
+  <rect x="334" y="334" width="106" height="106" rx="6" fill="#f2e9d8"/>
+
+  <!-- One cubby holds a note: a single flat tab breaking the top edge of
+       the center slot. This is the whole story: pull delivery, one slot
+       occupied, nothing pushed or ringing. -->
+  <rect x="223" y="187" width="66" height="20" rx="3" fill="#d9642c"/>
+</svg>

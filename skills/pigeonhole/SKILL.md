@@ -23,10 +23,13 @@ PG="$HOME/.pigeonhole/bin/pigeonhole"
 "$PG" check                  # unread message paths, one per line
 "$PG" send <to>              # body on stdin; prints the path it wrote
 "$PG" archive <path>         # move one of your messages to read/ after acting on it
-"$PG" join                   # only needed outside a git repo; the hook does it otherwise
+"$PG" join                   # only needed outside a git repo, or if your client runs no hook
+"$PG" doctor                 # check the install when something looks wrong
 ```
 
 `sweep` also exists; the hook runs it and you should not need it.
+
+Under Claude Code the session-start hook joins you automatically. Under any other client there is no hook — hooks are not part of the portable Agent Plugins spec — so run `join` yourself at the start of a session, or nobody can write to you.
 
 That path is a symlink the session-start hook keeps pointed at the installed plugin, so it stays correct across plugin updates and machines.
 

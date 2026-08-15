@@ -8,12 +8,27 @@ No server, no daemon, no MCP. One POSIX shell script and the filesystem.
 
 ## Install
 
+**Claude Code:**
+
 ```
 /plugin marketplace add Baukebrenninkmeijer/pigeonhole
 /plugin install pigeonhole@pigeonhole
 ```
 
 That's it — the plugin registers the skill and the `SessionStart` hook. Nothing to add to `settings.json`, nothing to symlink.
+
+**Any [Agent Plugins](https://agent-plugins.org/) client:** install the repo as a plugin however your client does it. You get the skill; you do not get the hook, because hooks are not part of the portable spec. Have your agent run `pigeonhole join` once per session instead — `AGENTS.md` at the repo root says so in the form an agent will follow.
+
+The two formats coexist in one repo rather than one being generated from the other:
+
+| | Agent Plugins 1.0.0 | Claude Code |
+|---|---|---|
+| Manifest | `plugin.json` (root) | `.claude-plugin/plugin.json` |
+| Marketplace | — | `.claude-plugin/marketplace.json` |
+| Skills | `skills/pigeonhole/SKILL.md` | same file |
+| Hooks | client extension, not portable | `hooks/hooks.json` |
+
+The skill is the one both specs agree on, so it exists once and is never copied.
 
 ## What an agent sees
 
@@ -40,7 +55,15 @@ echo "renamed .token to .access_token" | "$PG" send research-castries
 "$PG" archive <path>         # after you've acted on it
 ```
 
-`whoami`, `join`, `peers` and `sweep` also exist; the hook handles the last three.
+`whoami`, `join`, `peers` and `sweep` also exist; under Claude Code the hook handles the last three.
+
+When something looks wrong:
+
+```bash
+"$PG" doctor
+```
+
+Prints where the script and store actually are, whether the symlink is current, who it thinks you are, your unread count, and how many mailboxes are live, stale, or retired. Exits nonzero if any of it looks broken. Every bug found during development was invisible until someone went looking by hand; this is that hand-looking, written down.
 
 ## How it works
 
@@ -70,13 +93,17 @@ The store is global, not per-repo. A change in one repo routinely breaks a consu
 
 **Deletion is conservative.** Unread mail is never deleted at any age. Stale mailboxes are *moved* to `.retired/`, never removed — a dead mailbox can still hold something nobody read. Only `*.md` directly inside a `read/` directory is ever deleted, and only after 30 days.
 
-## Tests
+## Contributing
 
 ```
 sh test.sh
 ```
 
-Runs against a throwaway `HOME`; it never touches the real store. Each check corresponds to a bug that actually happened — identity drift across `cd`, `archive` escaping its own mailbox, a sender resurrecting a retired mailbox, retention deleting the wrong thing.
+That's the whole build. It runs against a throwaway `HOME` and never touches the real store, so it's safe to run on the machine you use pigeonhole on. CI runs it on macOS and Ubuntu — the Ubuntu leg matters because `/bin/sh` there is dash, where `$RANDOM` degrades to `0` and `find` is GNU rather than BSD.
+
+Each check corresponds to a bug that actually happened: identity drift across `cd`, `archive` escaping its own mailbox, a sender resurrecting a retired mailbox, retention deleting the wrong thing. Add a check when you fix a bug; that's the bar for a change here.
+
+Keep it one POSIX shell script. If a change needs a runtime, a package manager, or a daemon, it's the wrong change for this tool.
 
 ## Status
 

@@ -10,6 +10,7 @@
 #   pigeonhole send <to>         read body from stdin, deliver to <to>
 #   pigeonhole archive <path>    move one of YOUR messages to read/
 #   pigeonhole sweep             retire stale mailboxes, delete old archives
+#   pigeonhole doctor            check the install and print what it found
 #
 # One script rather than shell snippets in prose: every command here has drawn
 # a real bug at least once (zsh glob errors, unquoted word splitting, tilde in
@@ -170,6 +171,65 @@ sweep_() {
     -mtime "+$ARCHIVE_DAYS" -delete 2>/dev/null
 }
 
+# Everything that has gone wrong so far was invisible until someone went
+# looking by hand: a symlink left pointing at an uninstalled copy, a store in
+# the old location, a mailbox forked by running from a subdirectory. One
+# command that prints all of it beats re-deriving each check under pressure.
+doctor_() {
+  bad=0
+  say() { printf '%-9s %s\n' "$1" "$2"; }
+
+  say "script:" "$0"
+
+  link="$HOLE/bin/pigeonhole"
+  target=$(readlink "$link" 2>/dev/null)
+  if [ -z "$target" ]; then
+    say "symlink:" "MISSING at $link — start a new session to let the hook create it"
+    bad=1
+  elif [ ! -x "$target" ]; then
+    say "symlink:" "STALE, points at $target which is not executable"
+    bad=1
+  else
+    say "symlink:" "$link -> $target"
+  fi
+
+  if [ -d "$MAIL" ]; then
+    say "store:" "$MAIL"
+  else
+    say "store:" "MISSING at $MAIL — nothing has joined yet"
+    bad=1
+  fi
+
+  if git rev-parse --git-dir >/dev/null 2>&1; then
+    me=$(whoami_)
+    if [ -d "$MAIL/$me" ]; then
+      say "you:" "$me"
+    else
+      say "you:" "$me (no mailbox yet — run 'join')"
+      bad=1
+    fi
+    say "unread:" "$(check_ | wc -l | tr -d ' ')"
+  else
+    say "you:" "not in a git repo — identity would be '$(whoami_)' from the directory name"
+  fi
+
+  say "live:" "$(peers_ | wc -l | tr -d ' ') peer(s)"
+  say "stale:" "$(find "$MAIL" -mindepth 2 -maxdepth 2 -name '.joined' -mtime "+$STALE_DAYS" 2>/dev/null | wc -l | tr -d ' ') awaiting retirement"
+  say "retired:" "$(find "$MAIL/.retired" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ') mailbox(es)"
+
+  # The hook is registered by whichever client loaded the plugin, so this can
+  # only report what it can see, not prove the hook will fire.
+  if grep -rqs pigeonhole "$HOME/.claude/settings.json" "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null; then
+    say "hook:" "pigeonhole referenced in Claude Code config"
+  else
+    say "hook:" "NOT FOUND in Claude Code config — install the plugin, or run 'join' by hand each session"
+    bad=1
+  fi
+
+  [ "$bad" -eq 0 ] && say "result:" "ok" || say "result:" "problems above"
+  return "$bad"
+}
+
 cmd=${1:-}
 [ $# -gt 0 ] && shift
 case "$cmd" in
@@ -182,5 +242,6 @@ case "$cmd" in
   send)    send_ "$@" ;;
   archive) archive_ "$@" ;;
   sweep)   sweep_ ;;
-  *)       die "usage: $(basename "$0") {whoami|join|peers|board|status|check|send <to>|archive <path>|sweep}" ;;
+  doctor)  doctor_ ;;
+  *)       die "usage: $(basename "$0") {whoami|join|peers|board|status|check|send <to>|archive <path>|sweep|doctor}" ;;
 esac

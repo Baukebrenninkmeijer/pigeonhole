@@ -101,5 +101,14 @@ printf '%s' "$HOOK" | python3 -c 'import json,sys; json.loads(sys.stdin.read())'
 [ -L "$HOME/.pigeonhole/bin/pigeonhole" ] && ok "hook links bin/pigeonhole" \
   || fail "hook links bin/pigeonhole" "symlink not created"
 
+# doctor reports rather than mutates, and must survive a broken install.
+eval "$A doctor" | grep -q '^you:.*alpha-alpha' && ok "doctor identifies you" \
+  || fail "doctor identifies you" "no 'you:' line for alpha-alpha"
+rm -f "$HOME/.pigeonhole/bin/pigeonhole"
+eval "$A doctor" | grep -q 'MISSING' && ok "doctor flags a broken symlink" \
+  || fail "doctor flags a broken symlink" "did not report the missing link"
+eval "$A doctor" >/dev/null 2>&1 && fail "doctor exits nonzero on problems" "exited 0" \
+  || ok "doctor exits nonzero on problems"
+
 [ "$FAILED" -eq 0 ] && echo "all passed" || echo "FAILURES"
 exit "$FAILED"

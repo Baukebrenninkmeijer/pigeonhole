@@ -1,0 +1,61 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    # Ubuntu is the load-bearing half: /bin/sh there is dash, where $RANDOM
+    # degrades to 0 and find is GNU rather than BSD. macOS is the platform this
+    # is actually used on. Both, or the portability claim is just a comment.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: git identity for the fixture repos
+        run: |
+          git config --global user.email ci@example.invalid
+          git config --global user.name CI
+          git config --global init.defaultBranch main
+
+      - name: shell
+        run: |
+          sh --version 2>&1 | head -1 || true
+          ls -l /bin/sh
+
+      - name: test
+        run: sh test.sh
+
+      - name: manifests are valid JSON
+        run: |
+          for f in plugin.json .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/hooks.json; do
+            python3 -c "import json,sys; json.load(open('$f'))" && echo "ok   $f"
+          done
+
+      - name: plugin.json conforms to Agent Plugins 1.0.0
+        run: |
+          python3 - <<'PY'
+          import json
+          m = json.load(open("plugin.json"))
+          allowed = {"$schema","name","version","description","author",
+                     "homepage","repository","license","keywords","extensions"}
+          assert m["$schema"] == "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", m["$schema"]
+          extra = set(m) - allowed
+          assert not extra, f"schema is closed; unknown top-level fields: {extra}"
+          import re
+          assert re.fullmatch(r"(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", m["name"]), m["name"]
+          print("ok   plugin.json")
+          PY
+
+      - name: every skill has a SKILL.md with frontmatter
+        run: |
+          for d in skills/*/; do
+            test -f "$d/SKILL.md" || { echo "missing $d/SKILL.md"; exit 1; }
+            head -1 "$d/SKILL.md" | grep -q '^---$' || { echo "$d/SKILL.md has no frontmatter"; exit 1; }
+            echo "ok   $d"
+          done
