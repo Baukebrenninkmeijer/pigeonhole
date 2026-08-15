@@ -108,7 +108,3 @@ That's the whole build. It runs against a throwaway `HOME` and never touches the
 Each check corresponds to a bug that actually happened: identity drift across `cd`, `archive` escaping its own mailbox, a sender resurrecting a retired mailbox, retention deleting the wrong thing. Add a check when you fix a bug; that's the bar for a change here.
 
 Keep it one POSIX shell script. If a change needs a runtime, a package manager, or a daemon, it's the wrong change for this tool.
-
-## Status
-
-Early. Used daily across ~30 worktrees on one machine. The interesting open question is whether agents post status often enough without a harder forcing function than a session-start nudge.
