@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "pigeonhole",
+  "description": "File-based mail and a status board for coding agents running in parallel worktrees.",
+  "owner": {
+    "name": "Bauke Brenninkmeijer",
+    "url": "https://github.com/Baukebrenninkmeijer"
+  },
+  "plugins": [
+    {
+      "name": "pigeonhole",
+      "description": "Each worktree gets a mail slot. Agents leave each other notes and post what they are working on, so two agents in the same code find out before they collide.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

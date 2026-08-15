@@ -1,0 +1,186 @@
+#!/bin/sh
+# pigeonhole — file-based mailbox and status board for parallel coding agents.
+#
+#   pigeonhole whoami            print this agent's mailbox name
+#   pigeonhole join              create this agent's mailbox
+#   pigeonhole peers             list live agents, names only
+#   pigeonhole board             list live agents and what each is working on
+#   pigeonhole status            read a status line from stdin, then print the board
+#   pigeonhole check             list unread message paths, one per line
+#   pigeonhole send <to>         read body from stdin, deliver to <to>
+#   pigeonhole archive <path>    move one of YOUR messages to read/
+#   pigeonhole sweep             retire stale mailboxes, delete old archives
+#
+# One script rather than shell snippets in prose: every command here has drawn
+# a real bug at least once (zsh glob errors, unquoted word splitting, tilde in
+# quotes, same-second filename collisions, shell variables not surviving
+# between agent tool calls). Fixed once in code beats re-derived correctly
+# every invocation.
+
+set -u
+
+HOLE="$HOME/.pigeonhole"        # "$HOME", never "~" — tilde does not expand in quotes
+MAIL="$HOLE/mail"
+STALE_DAYS=30                   # mailbox not joined this long is retired
+ARCHIVE_DAYS=30                 # read/ message older than this is deleted
+
+die() { echo "pigeonhole: $1" >&2; exit 1; }
+
+# A name becomes a path component, so anything outside the safe set is folded
+# to '-'. Applies equally to self-derived names and to a from: value off an
+# untrusted message — a directory basename is externally controlled too.
+sanitize() {
+  n=$(printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-')
+  case "$n" in
+    ''|.|..) n=unnamed ;;
+    .*)      n="agent$n" ;;
+  esac
+  printf '%s\n' "$n"
+}
+
+# Identity is a property of the WORKTREE, not of the shell's cwd. Deriving the
+# workspace half from $PWD meant `cd docs && whoami` answered <repo>-docs,
+# silently forking one agent into a second mailbox nobody ever reads.
+whoami_() {
+  gd=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+  top=$(git rev-parse --show-toplevel 2>/dev/null)
+  if [ -n "$gd" ] && [ -n "$top" ]; then
+    sanitize "$(basename "$(dirname "$gd")")-$(basename "$top")"
+  else
+    sanitize "$(basename "$PWD")"
+  fi
+}
+
+# Liveness lives in .joined, which only join_ ever touches. It cannot live on
+# the mailbox directory's mtime: send_ writes a file inside that directory,
+# which bumps its mtime, so any dead workspace someone mailed looked alive and
+# could never be retired.
+join_() {
+  me=$(whoami_)
+  mkdir -p "$MAIL/$me/read" || die "cannot create mailbox"
+  touch "$MAIL/$me/.joined"
+  printf '%s\n' "$me"
+}
+
+# Every live mailbox directory, one per line. peers_ and board_ share it.
+live_() {
+  mkdir -p "$MAIL" || die "cannot create $MAIL"   # first run on a fresh machine
+  # maxdepth 2 keeps .retired/<name>/.joined out; the .* guard keeps any other
+  # dot-directory at the top level out.
+  find "$MAIL" -mindepth 2 -maxdepth 2 -name '.joined' -mtime "-$STALE_DAYS" 2>/dev/null |
+    while IFS= read -r s; do
+      d=$(dirname "$s")
+      case "$(basename "$d")" in .*) continue ;; esac
+      printf '%s\n' "$d"
+    done | sort
+}
+
+peers_() {
+  me=$(whoami_)
+  live_ | while IFS= read -r d; do
+    p=$(basename "$d")
+    [ "$p" = "$me" ] && continue
+    printf '%s\n' "$p"
+  done
+}
+
+board_() {
+  me=$(whoami_)
+  live_ | while IFS= read -r d; do
+    p=$(basename "$d")
+    [ "$p" = "$me" ] && continue
+    s=''
+    [ -f "$d/.status" ] && s=$(head -n 1 "$d/.status")
+    if [ -n "$s" ]; then
+      printf '%s: %s\n' "$p" "$s"
+    else
+      printf '%s\n' "$p"
+    fi
+  done
+}
+
+# Status is agent-authored free text that ends up inside the hook's JSON, so it
+# is flattened at the boundary — one line, no quotes or backslashes, printable
+# only. Sanitizing on write means every reader can treat the file as safe.
+status_() {
+  me=$(whoami_)
+  mkdir -p "$MAIL/$me/read" || die "cannot create mailbox"
+  head -n 1 | tr -d '\\"' | tr -c 'A-Za-z0-9 ._,:;()/#+=@-' ' ' | cut -c1-120 \
+    | sed 's/  *$//' > "$MAIL/$me/.status" || die "write failed"
+  touch "$MAIL/$me/.joined"
+  board_
+}
+
+check_() {
+  me=$(whoami_)
+  mkdir -p "$MAIL/$me/read"               # keeps find from erroring pre-join
+  # find, never ls *.md — zsh treats an unmatched glob as a shell-level error
+  # that 2>/dev/null cannot suppress
+  find "$MAIL/$me" -maxdepth 1 -name '*.md' 2>/dev/null | sort
+}
+
+send_() {
+  [ $# -ge 1 ] || die "usage: send <recipient>"
+  to=$(sanitize "$1")
+  [ -d "$MAIL/$to" ] || die "no mailbox '$to' — run 'board' to see who exists"
+  me=$(whoami_)
+  # $RANDOM guards same-second collisions within one process, $$ across
+  # concurrent senders. macOS date has no %N to fall back on. ($RANDOM is a
+  # bash/zsh-ism; under a strict POSIX sh it degrades to 0 and only $$ remains.)
+  f="$MAIL/$to/$(date +%Y%m%d-%H%M%S)-${RANDOM:-0}-$$-$me.md"
+  [ -e "$f" ] && die "filename collision, retry"
+  {
+    printf -- '---\nfrom: %s\nat: %s\n---\n\n' "$me" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    cat
+  } > "$f" || die "write failed"
+  printf '%s\n' "$f"
+}
+
+# Only your own unread mail, and only by the path check_ printed. Without this
+# confinement `archive` was an arbitrary-file-move primitive, and could silently
+# take a peer's unread message out of their inbox and file it as your own.
+archive_() {
+  [ $# -ge 1 ] || die "usage: archive <path>"
+  me=$(whoami_)
+  case "$1" in
+    *..*)               die "path may not contain '..': $1" ;;
+    "$MAIL/$me"/*.md)   ;;
+    *)                  die "not your message: $1" ;;
+  esac
+  [ -f "$1" ] || die "no such message: $1"
+  mkdir -p "$MAIL/$me/read"
+  mv "$1" "$MAIL/$me/read/" || die "archive failed"
+}
+
+sweep_() {
+  mkdir -p "$MAIL/.retired" 2>/dev/null || return 0
+  me=$(whoami_)
+  # Retire, never delete: a stale mailbox can still hold unread mail, and
+  # losing that is worse than a directory nobody reads. Reversible with one mv.
+  find "$MAIL" -mindepth 2 -maxdepth 2 -name '.joined' -mtime "+$STALE_DAYS" 2>/dev/null |
+    while IFS= read -r s; do
+      dead=$(dirname "$s")
+      [ "$dead" = "$MAIL/$me" ] && continue
+      case "$(basename "$dead")" in .*) continue ;; esac
+      mv "$dead" "$MAIL/.retired/" 2>/dev/null
+    done
+  # Archived mail is already acted on, so age it out. Scoped hard: only *.md,
+  # only directly inside a read/ directory, only under $MAIL.
+  find "$MAIL" -mindepth 3 -maxdepth 3 -type f -name '*.md' -path '*/read/*' \
+    -mtime "+$ARCHIVE_DAYS" -delete 2>/dev/null
+}
+
+cmd=${1:-}
+[ $# -gt 0 ] && shift
+case "$cmd" in
+  whoami)  whoami_ ;;
+  join)    join_ ;;
+  peers)   peers_ ;;
+  board)   board_ ;;
+  status)  status_ ;;
+  check)   check_ ;;
+  send)    send_ "$@" ;;
+  archive) archive_ "$@" ;;
+  sweep)   sweep_ ;;
+  *)       die "usage: $(basename "$0") {whoami|join|peers|board|status|check|send <to>|archive <path>|sweep}" ;;
+esac
