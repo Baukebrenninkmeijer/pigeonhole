@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "pigeonhole",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A wall of mail slots for parallel coding agents. Each worktree gets a pigeonhole; agents leave each other notes and post what they are working on. No server, no daemon, no MCP.",
   "author": {
     "name": "Bauke Brenninkmeijer",
