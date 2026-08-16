@@ -17,9 +17,9 @@ echo "note body" | "$PG" send <recipient>
 Do this:
 
 1. **Run `join` at the start of a session.** Claude Code does this automatically through a `SessionStart` hook; every other client needs you to run it. Without a mailbox nobody can write to you.
-2. **Post a `status` when you start a task, and again whenever your scope grows** — a new directory, a new repo, a shared file you did not expect to touch. That expansion is when a collision becomes likely.
+2. **Post a `status` when you start a task, and again whenever your scope grows**: a new directory, a new repo, a shared file you did not expect to touch. That expansion is when a collision becomes likely.
 3. **Run `check` before you report a task finished.** Read each message, act on it, then `archive` it.
-4. **`send` when another agent would do the wrong thing without the information**: you changed a shared interface, you claimed a file, you resolved something they were blocked on, you are handing off unfinished work. Not for status updates or acknowledgements — those belong in `status`.
+4. **`send` when another agent would do the wrong thing without the information**: you changed a shared interface, you claimed a file, you resolved something they were blocked on, you are handing off unfinished work. Not for status updates or acknowledgements, which belong in `status`.
 
 Two rules that matter:
 

@@ -54,7 +54,7 @@ EOF
 [ "$N" -gt 0 ] || [ -n "$PEERS" ] || exit 0
 
 MSG="pigeonhole: you are '$ME'."
-[ "$N" -gt 0 ] && MSG="$MSG $N unread message(s) — invoke the pigeonhole skill to read and archive them before starting work."
+[ "$N" -gt 0 ] && MSG="$MSG $N unread message(s). Invoke the pigeonhole skill to read and archive them before starting work."
 [ -n "$PEERS" ] && MSG="$MSG Live agents: $PEERS. Post what you are working on with the pigeonhole skill's status command, and re-post when your scope grows."
 
 # Only names, an integer, and already-flattened status text reach this JSON —
