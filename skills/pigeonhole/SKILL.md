@@ -67,7 +67,7 @@ echo "PROJ-812: reworking auth in shared/auth.py + the API callers" | "$PG" stat
 
 `status` prints the board after writing, so you immediately see who else is in the same code. If a line overlaps yours, `send` that agent a message now rather than after you have both committed.
 
-Under Claude Code the prompt hook has already written one for you, from the user's own words. It is a starting point, not a scope: overwrite it once you know which files you are actually touching.
+Under Claude Code your in-progress todo is already on the board. That covers the task; it does not cover scope, so post one yourself when you claim files a peer would care about.
 
 One line, flattened to plain text on write. It claims attention. It does not lock anything, and nothing stops another agent editing the same file.
 

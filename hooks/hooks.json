@@ -13,12 +13,13 @@
         ]
       }
     ],
-    "UserPromptSubmit": [
+    "PostToolUse": [
       {
+        "matcher": "TodoWrite",
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt.sh\"",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/todo-status.sh\"",
             "timeout": 5
           }
         ]

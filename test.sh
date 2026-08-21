@@ -126,27 +126,27 @@ printf '%s' "$(cd "$TMP/alpha" && sh "$(dirname "$PG")/../hooks/session-start.sh
   && fail "hook omits send nudge with no statuses" "nudged send at an empty board" \
   || ok "hook omits send nudge with no statuses"
 
-# The prompt hook is what actually fills the board: agents do not post their own
-# status when asked, so the task the user typed becomes the status.
-UP="$(dirname "$PG")/../hooks/user-prompt.sh"
+# The todo hook is what actually fills the board: agents do not post their own
+# status when asked, but they do write todo lists, so the in-progress item is
+# the status. Agent-authored, and it moves when the work moves.
+TH="$(dirname "$PG")/../hooks/todo-status.sh"
+TODOS='{"tool_name":"TodoWrite","tool_input":{"todos":[{"content":"Read the auth module","status":"completed"},{"content":"Rewrite \\"validate_token\\" in shared/auth.py","status":"in_progress"},{"content":"Run the tests","status":"pending"}]}}'
 rm -f "$M/alpha-alpha/.status"
-OUT=$(cd "$TMP/alpha" && printf '{"session_id":"x","prompt":"RES-9: rework \\"auth\\" in shared/auth.py\\nand the callers","cwd":"/x"}' | sh "$UP")
-is "prompt hook writes a status" "$(cat "$M/alpha-alpha/.status" 2>/dev/null)" \
-   "RES-9: rework auth in shared/auth.py and the callers"
-is "prompt hook stays silent" "$OUT" ""
+OUT=$(cd "$TMP/alpha" && printf '%s' "$TODOS" | sh "$TH")
+is "todo hook writes the in-progress item" "$(cat "$M/alpha-alpha/.status" 2>/dev/null)" \
+   "Rewrite validate_token in shared/auth.py"
+is "todo hook stays silent" "$OUT" ""
 
-# An approval or a slash command is not a task and must not clobber a real one.
-for P in "yes go ahead" "/commit and push the thing"; do
-  (cd "$TMP/alpha" && printf '{"prompt":"%s"}' "$P" | sh "$UP")
-  is "prompt hook ignores '$P'" "$(cat "$M/alpha-alpha/.status" 2>/dev/null)" \
-     "RES-9: rework auth in shared/auth.py and the callers"
-done
+# A finished list has nothing in progress, and must not blank a live status.
+(cd "$TMP/alpha" && printf '{"tool_input":{"todos":[{"content":"Run the tests","status":"completed"}]}}' | sh "$TH")
+is "todo hook keeps the last status when nothing is in progress" \
+   "$(cat "$M/alpha-alpha/.status" 2>/dev/null)" "Rewrite validate_token in shared/auth.py"
 
 # Outside a git repo there is no agent to speak for.
 rm -f "$M/alpha-alpha/.status"
-(cd "$TMP" && printf '{"prompt":"a long enough prompt to pass the guard"}' | sh "$UP")
-[ -f "$M/alpha-alpha/.status" ] && fail "prompt hook needs a git repo" "wrote a status from outside one" \
-  || ok "prompt hook needs a git repo"
+(cd "$TMP" && printf '%s' "$TODOS" | sh "$TH")
+[ -f "$M/alpha-alpha/.status" ] && fail "todo hook needs a git repo" "wrote a status from outside one" \
+  || ok "todo hook needs a git repo"
 
 # doctor reports rather than mutates, and must survive a broken install.
 eval "$A doctor" | grep -q '^you:.*alpha-alpha' && ok "doctor identifies you" \
