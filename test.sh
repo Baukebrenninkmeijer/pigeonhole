@@ -94,12 +94,59 @@ eval "$A sweep"
   && ok "retired mailbox keeps its unread mail" \
   || fail "retired mailbox keeps its unread mail" "mail lost on retire"
 
+# Two live peers for the hook to report: one with a status, one without. delta
+# sorts before gamma, so plain alphabetical order would put the bare name first.
+for p in gamma-gamma delta-delta; do mkdir -p "$M/$p/read" && touch "$M/$p/.joined"; done
+echo "rewriting shared/auth.py" > "$M/gamma-gamma/.status"
+
 # The hook must emit exactly one line of valid JSON, and must not leak message text.
 HOOK=$(cd "$TMP/alpha" && sh "$(dirname "$PG")/../hooks/session-start.sh")
 printf '%s' "$HOOK" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' 2>/dev/null \
   && ok "hook emits valid JSON" || fail "hook emits valid JSON" "$HOOK"
 [ -L "$HOME/.pigeonhole/bin/pigeonhole" ] && ok "hook links bin/pigeonhole" \
   || fail "hook links bin/pigeonhole" "symlink not created"
+
+# A bare name is nothing to collide with, so the statused peer must come first
+# or the 12-line cap spends itself on names.
+printf '%s' "$HOOK" | grep -q 'gamma-gamma: rewriting shared/auth.py; delta-delta' \
+  && ok "hook lists statused peers first" \
+  || fail "hook lists statused peers first" "$HOOK"
+
+# Both nudges must be runnable lines, not a pointer at the skill.
+printf '%s' "$HOOK" | grep -q "echo 'one line on what you are working on' | .HOME/.pigeonhole/bin/pigeonhole status" \
+  && ok "hook spells out the status command" || fail "hook spells out the status command" "$HOOK"
+printf '%s' "$HOOK" | grep -q 'pigeonhole send <name>' \
+  && ok "hook nudges send when a peer has a status" \
+  || fail "hook nudges send when a peer has a status" "$HOOK"
+
+# With nobody statused there is nothing to collide with, so no send nudge.
+rm -f "$M/gamma-gamma/.status"
+printf '%s' "$(cd "$TMP/alpha" && sh "$(dirname "$PG")/../hooks/session-start.sh")" \
+  | grep -q 'pigeonhole send <name>' \
+  && fail "hook omits send nudge with no statuses" "nudged send at an empty board" \
+  || ok "hook omits send nudge with no statuses"
+
+# The prompt hook is what actually fills the board: agents do not post their own
+# status when asked, so the task the user typed becomes the status.
+UP="$(dirname "$PG")/../hooks/user-prompt.sh"
+rm -f "$M/alpha-alpha/.status"
+OUT=$(cd "$TMP/alpha" && printf '{"session_id":"x","prompt":"RES-9: rework \\"auth\\" in shared/auth.py\\nand the callers","cwd":"/x"}' | sh "$UP")
+is "prompt hook writes a status" "$(cat "$M/alpha-alpha/.status" 2>/dev/null)" \
+   "RES-9: rework auth in shared/auth.py and the callers"
+is "prompt hook stays silent" "$OUT" ""
+
+# An approval or a slash command is not a task and must not clobber a real one.
+for P in "yes go ahead" "/commit and push the thing"; do
+  (cd "$TMP/alpha" && printf '{"prompt":"%s"}' "$P" | sh "$UP")
+  is "prompt hook ignores '$P'" "$(cat "$M/alpha-alpha/.status" 2>/dev/null)" \
+     "RES-9: rework auth in shared/auth.py and the callers"
+done
+
+# Outside a git repo there is no agent to speak for.
+rm -f "$M/alpha-alpha/.status"
+(cd "$TMP" && printf '{"prompt":"a long enough prompt to pass the guard"}' | sh "$UP")
+[ -f "$M/alpha-alpha/.status" ] && fail "prompt hook needs a git repo" "wrote a status from outside one" \
+  || ok "prompt hook needs a git repo"
 
 # doctor reports rather than mutates, and must survive a broken install.
 eval "$A doctor" | grep -q '^you:.*alpha-alpha' && ok "doctor identifies you" \

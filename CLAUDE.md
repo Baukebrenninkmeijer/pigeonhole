@@ -19,6 +19,8 @@ CI additionally validates every manifest, the Agent Plugins closed-schema rule, 
 
 **Bump `version` in both `plugin.json` and `.claude-plugin/plugin.json` or the change never reaches anyone.** `claude plugin update` compares version strings, not content. With an unchanged version it prints "already at the latest version" and copies nothing, so a pushed fix silently keeps running the old code.
 
+Editing a hook *script* in the installed copy takes effect on the next session, because the script is run by path. Editing `hooks/hooks.json` does not: Claude Code caches which hooks exist per installed plugin, so a newly added event — or a new entry under an existing one — stays dead until a real `claude plugin update`. Testing a new hook event against the installed plugin therefore proves nothing; wire it through `claude -p --settings <file>` instead, which reads hook config fresh.
+
 ```sh
 sh test.sh
 # bump version in plugin.json AND .claude-plugin/plugin.json

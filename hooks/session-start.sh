@@ -34,6 +34,15 @@ fi
 
 N=$("$PG" check 2>/dev/null | wc -l | tr -d ' ')
 
+BOARD=$("$PG" board 2>/dev/null)
+
+# Statused agents first. A bare name is not something you can collide with, so
+# spending the cap below on names while the few agents who said what they are
+# doing fall off the end is the wrong twelve lines. Names never contain ':',
+# so the ':' split is exactly "has a status" vs "does not".
+BOARD=$(printf '%s\n' "$BOARD" | grep ':'; printf '%s\n' "$BOARD" | grep -v ':')
+NSTATUS=$(printf '%s\n' "$BOARD" | grep -c ':')
+
 # Cap the roster: with dozens of workspaces the full board is noise, and the
 # skill's `board` subcommand gives the complete list on demand. Each line is
 # "name" or "name: what they are working on"; status text was already flattened
@@ -46,7 +55,7 @@ while IFS= read -r p; do
   [ "$COUNT" -gt 12 ] && continue
   PEERS="${PEERS:+$PEERS; }$(printf '%s' "$p" | cut -c1-70)"
 done <<EOF
-$("$PG" board 2>/dev/null)
+$BOARD
 EOF
 [ "$COUNT" -gt 12 ] && PEERS="$PEERS; and $((COUNT - 12)) more"
 
@@ -55,7 +64,20 @@ EOF
 
 MSG="pigeonhole: you are '$ME'."
 [ "$N" -gt 0 ] && MSG="$MSG $N unread message(s). Invoke the pigeonhole skill to read and archive them before starting work."
-[ -n "$PEERS" ] && MSG="$MSG Live agents: $PEERS. Post what you are working on with the pigeonhole skill's status command, and re-post when your scope grows."
+if [ -n "$PEERS" ]; then
+  # The ask comes before the roster. Twelve lines of other people's work is a
+  # wall to skim past; behind it, a request reads as a footnote.
+  # Spell the command out. Loading a skill to learn one pipeline is a cost most
+  # agents decline at session start, and status is the write that seeds
+  # everything else: with no statuses the board is names, and with no board
+  # nobody has a reason to send. No double quotes or backslashes here -- this
+  # string goes into the JSON below unescaped.
+  MSG="$MSG Run this now, before your first edit, and again when your scope grows: echo 'one line on what you are working on' | \$HOME/.pigeonhole/bin/pigeonhole status"
+  # The send nudge only makes sense next to lines you could collide with.
+  MSG="$MSG Live agents: $PEERS."
+  # The send nudge only makes sense next to lines you could collide with.
+  [ "$NSTATUS" -gt 0 ] && MSG="$MSG If one of those lines touches a file you are about to change, tell that agent before you start: echo 'what you are about to change' | \$HOME/.pigeonhole/bin/pigeonhole send <name>"
+fi
 
 # Only names, an integer, and already-flattened status text reach this JSON —
 # never message content. Mail is untrusted input and must enter context through
