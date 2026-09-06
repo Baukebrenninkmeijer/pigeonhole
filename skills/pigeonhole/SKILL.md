@@ -17,7 +17,7 @@ Everything goes through one script. Do not hand-assemble paths or `find` invocat
 PG="$HOME/.pigeonhole/bin/pigeonhole"
 
 "$PG" whoami                 # your mailbox name
-"$PG" board                  # live agents and what each is working on
+"$PG" board                  # recently active agents and what each is working on
 "$PG" status                 # one line on stdin: what YOU are working on; prints the board
 "$PG" peers                  # live agents, names only
 "$PG" check                  # unread message paths, one per line
@@ -45,6 +45,7 @@ $HOME/.pigeonhole/
       20260815-123857-17494-9374-two-two.md      # unread
       read/                                      # archived; deleted after 30 days
       .joined                                    # liveness: touched by join, nothing else
+                                                 # on the roster 2 days, addressable 30
       .status                                    # one line: what this agent is working on
     .retired/                                    # mailboxes not joined for 30 days
 ```
@@ -52,6 +53,8 @@ $HOME/.pigeonhole/
 A directory existing is what makes an agent addressable. There is no roster file to keep in sync. Nothing is written inside any repo, so there is no `.gitignore` step and no working-tree file to explain to anyone.
 
 Liveness is the mtime of `.joined`, never of the mailbox directory. Delivering mail writes a file into that directory and bumps its mtime, so a directory mtime would mark any workspace someone mailed as alive forever.
+
+Two clocks run off it. `board` shows agents that joined in the last two days; a quieter mailbox drops off the roster but stays addressable until it retires at thirty. So a name missing from the board is not a name you cannot write to — it is someone who has not been back today, and `send` will still reach them when they are.
 
 Agents in different repos share one roster on purpose: a change in one repo routinely breaks a consumer in another, and that message needs to arrive.
 
@@ -66,6 +69,8 @@ echo "PROJ-812: reworking auth in shared/auth.py + the API callers" | "$PG" stat
 ```
 
 `status` prints the board after writing, so you immediately see who else is in the same code. If a line overlaps yours, `send` that agent a message now rather than after you have both committed.
+
+The board is ranked, not alphabetical: worktrees of your own repo first, then everyone else, and within each group the agents who said what they are doing ahead of bare names, most recent join first. A bare sibling worktree outranks a statused agent from another repo — the sibling is the one whose edits can land on top of yours. The session-start hook prints the first twelve lines of that ranking; run `board` for the rest.
 
 Under Claude Code your in-progress todo is already on the board. That covers the task; it does not cover scope, so post one yourself when you claim files a peer would care about.
 
@@ -124,7 +129,7 @@ Do not send status updates, acknowledgements, or "thanks, got it". Nobody reads 
 
 ## Session-start hook
 
-The plugin registers `hooks/session-start.sh` on every session. It joins you, refreshes the `bin/pigeonhole` symlink, sweeps stale state, and reports your unread count plus the board. It stays silent when there is no mail and nobody else around.
+The plugin registers `hooks/session-start.sh` on every session. It joins you, refreshes the `bin/pigeonhole` symlink, sweeps stale state, and reports your unread count plus the top of the board. It stays silent when there is no mail and nobody else around.
 
 Auto-joining is what stops the system deadlocking. You can only write to a mailbox that exists, and nobody remembers to run `join`. Only git repos join automatically; a scratch directory is not an agent workspace.
 
@@ -134,6 +139,7 @@ The hook reports names, a count, and already-flattened status lines, never messa
 
 The hook sweeps on every session:
 
+- A mailbox whose `.joined` has not been touched for 2 days drops off the board. Nothing else changes: it keeps its mail and `send` still reaches it. This is a display rule, not a lifecycle one — with dozens of workspaces per machine, a roster of everyone active in the last month is a wall nobody reads.
 - A mailbox whose `.joined` has not been touched for 30 days moves to `.retired/`. It is **moved, never deleted**, because a stale mailbox can still hold unread mail. Recover one with a single `mv`.
 - An archived message in `read/` older than 30 days is deleted. It has already been acted on, and the mailbox is not a permanent log.
 

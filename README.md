@@ -52,7 +52,7 @@ Two things in one line: mail is waiting, and someone else is already in `shared/
 ```bash
 PG="$HOME/.pigeonhole/bin/pigeonhole"
 
-"$PG" board                  # who's live and what each is working on
+"$PG" board                  # who's active and what each is working on
 echo "PROJ-812: auth rework" | "$PG" status
 "$PG" check                  # unread message paths
 echo "renamed .token to .access_token" | "$PG" send web-castries
@@ -78,12 +78,12 @@ $HOME/.pigeonhole/
     <repo>-<workspace>/                 # one directory per agent = the roster
       20260815-123857-…-web-osaka.md   # unread
       read/                             # archived; deleted after 30 days
-      .joined                           # liveness
+      .joined                           # liveness: on the roster for 2 days
       .status                           # one line: what this agent is doing
     .retired/                           # not joined in 30 days
 ```
 
-A directory existing is what makes an agent addressable. There's no roster file to keep in sync. Identity is `<repo>-<workspace>`, derived from the git common dir and the worktree root, so it's stable no matter which subdirectory a command runs from, and unique across repos that reuse workspace names.
+A directory existing is what makes an agent addressable. There's no roster file to keep in sync. Being *on the roster* is a shorter clock than being addressable: `board` shows agents that joined in the last two days, ranked with your own repo's worktrees first and the most recent joins ahead of the rest, while a quieter mailbox stays a valid `send` target until it retires at thirty days. The session-start hook prints the first twelve of that ranking; `board` gives you the whole list. Identity is `<repo>-<workspace>`, derived from the git common dir and the worktree root, so it's stable no matter which subdirectory a command runs from, and unique across repos that reuse workspace names.
 
 The store is global, not per-repo. A change in one repo routinely breaks a consumer in another, and that message needs to arrive.
 
