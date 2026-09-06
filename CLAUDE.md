@@ -41,6 +41,10 @@ Each of these looks like something to simplify and is load-bearing. All were bug
 
 **Liveness is the mtime of `.joined`, touched only by `join`.** It cannot live on the mailbox directory: `send` writes a file inside that directory and bumps its mtime, so a mailed-to workspace would read as alive forever and never retire.
 
+**Two horizons, not one.** `BOARD_DAYS` (2) decides who is on the roster; `STALE_DAYS` (30) decides who gets retired. Collapsing them back into one put every workspace abandoned in the last month on a roster the hook truncates to twelve lines, so the twelve went to whoever sorted first alphabetically and the peer you could actually collide with was never shown. `sweep` must keep using the longer one: a mailbox off the roster is still a valid `send` target, which is what lets you hand work to an agent who has not been back yet.
+
+**`board` is ranked, and the hook must not re-sort it.** Same repo before other repos, and within each, an agent with a status before a bare name — a bare sibling worktree outranks a statused stranger, because the sibling is the one you can collide with. `live_` orders by `.joined` mtime via `ls -t`, not `stat`, whose mtime flag differs between BSD and GNU.
+
 **`archive` accepts only `"$MAIL/$me"/*.md` and rejects `..`.** Without that it is an arbitrary-file-move primitive, and can take a peer's unread message out of their inbox.
 
 **`status` is sanitized on write, not escaped on read.** It ends up inside the hook's JSON. Flattening to one line of safe characters at the boundary means every consumer can treat the stored file as safe.

@@ -36,11 +36,10 @@ N=$("$PG" check 2>/dev/null | wc -l | tr -d ' ')
 
 BOARD=$("$PG" board 2>/dev/null)
 
-# Statused agents first. A bare name is not something you can collide with, so
-# spending the cap below on names while the few agents who said what they are
-# doing fall off the end is the wrong twelve lines. Names never contain ':',
-# so the ':' split is exactly "has a status" vs "does not".
-BOARD=$(printf '%s\n' "$BOARD" | grep ':'; printf '%s\n' "$BOARD" | grep -v ':')
+# board already ranks: same repo before other repos, and within each, agents
+# who said what they are doing before bare names. Re-splitting on ':' here
+# would sort a statused stranger above a sibling worktree and undo that.
+# Names never contain ':', so the ':' count is exactly "how many have a status".
 NSTATUS=$(printf '%s\n' "$BOARD" | grep -c ':')
 
 # Cap the roster: with dozens of workspaces the full board is noise, and the

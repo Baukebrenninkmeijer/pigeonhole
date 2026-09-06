@@ -94,8 +94,24 @@ eval "$A sweep"
   && ok "retired mailbox keeps its unread mail" \
   || fail "retired mailbox keeps its unread mail" "mail lost on retire"
 
-# Two live peers for the hook to report: one with a status, one without. delta
-# sorts before gamma, so plain alphabetical order would put the bare name first.
+# Two horizons: quiet for BOARD_DAYS drops you off the roster, quiet for
+# STALE_DAYS retires you. A mailbox between the two must stay addressable, or
+# you cannot hand work to an agent who has not been back yet today.
+FIVED=$(date -v-5d +%Y%m%d%H%M 2>/dev/null || date -d '5 days ago' +%Y%m%d%H%M)
+mkdir -p "$M/quiet-quiet/read" && touch -t "$FIVED" "$M/quiet-quiet/.joined"
+eval "$A peers" | grep -q quiet-quiet \
+  && fail "quiet mailbox off the roster" "listed a peer last seen 5 days ago" \
+  || ok "quiet mailbox off the roster"
+eval "$A sweep"
+[ -d "$M/quiet-quiet" ] && ok "quiet mailbox not retired" \
+  || fail "quiet mailbox not retired" "sweep retired a mailbox inside STALE_DAYS"
+echo q | eval "$A send quiet-quiet" >/dev/null \
+  && ok "quiet mailbox still addressable" \
+  || fail "quiet mailbox still addressable" "send refused an off-roster mailbox"
+rm -rf "$M/quiet-quiet"
+
+# Two peers in another repo for the hook to report: one with a status, one
+# without. gamma is touched first, so recency alone would lead with delta.
 for p in gamma-gamma delta-delta; do mkdir -p "$M/$p/read" && touch "$M/$p/.joined"; done
 echo "rewriting shared/auth.py" > "$M/gamma-gamma/.status"
 
@@ -106,11 +122,34 @@ printf '%s' "$HOOK" | python3 -c 'import json,sys; json.loads(sys.stdin.read())'
 [ -L "$HOME/.pigeonhole/bin/pigeonhole" ] && ok "hook links bin/pigeonhole" \
   || fail "hook links bin/pigeonhole" "symlink not created"
 
-# A bare name is nothing to collide with, so the statused peer must come first
-# or the 12-line cap spends itself on names.
+# Within one repo tier a bare name is nothing to collide with, so the statused
+# peer leads or the 12-line cap spends itself on names.
 printf '%s' "$HOOK" | grep -q 'gamma-gamma: rewriting shared/auth.py; delta-delta' \
   && ok "hook lists statused peers first" \
   || fail "hook lists statused peers first" "$HOOK"
+
+# But a sibling worktree of your own repo outranks a statused stranger: it is
+# the one you can actually collide with. alpha-sibling has no status at all and
+# still has to come before gamma-gamma, which does.
+mkdir -p "$M/alpha-sibling/read" && touch "$M/alpha-sibling/.joined"
+printf '%s' "$(cd "$TMP/alpha" && sh "$(dirname "$PG")/../hooks/session-start.sh")" \
+  | grep -q 'alpha-sibling.*gamma-gamma' \
+  && ok "same repo outranks a status" \
+  || fail "same repo outranks a status" "gamma-gamma came first"
+rm -rf "$M/alpha-sibling"
+
+# With nothing else to break the tie, the roster is most recently joined
+# first. delta sorts first alphabetically and is the older join, so only real
+# mtime ordering puts gamma on top. Distinct timestamps, not two touches in
+# the same second: ls -t breaks ties however it likes.
+rm -f "$M/gamma-gamma/.status"
+TENH=$(date -v-10H +%Y%m%d%H%M 2>/dev/null || date -d '10 hours ago' +%Y%m%d%H%M)
+touch -t "$TENH" "$M/delta-delta/.joined" && touch "$M/gamma-gamma/.joined"
+eval "$A peers" | head -n 1 | grep -q gamma-gamma \
+  && ok "roster leads with the most recent join" \
+  || fail "roster leads with the most recent join" "$(eval "$A peers" | head -n 1)"
+touch "$M/delta-delta/.joined"
+echo "rewriting shared/auth.py" > "$M/gamma-gamma/.status"
 
 # Both nudges must be runnable lines, not a pointer at the skill.
 printf '%s' "$HOOK" | grep -q "echo 'one line on what you are working on' | .HOME/.pigeonhole/bin/pigeonhole status" \

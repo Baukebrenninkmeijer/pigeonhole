@@ -3,8 +3,8 @@
 #
 #   pigeonhole whoami            print this agent's mailbox name
 #   pigeonhole join              create this agent's mailbox
-#   pigeonhole peers             list live agents, names only
-#   pigeonhole board             list live agents and what each is working on
+#   pigeonhole peers             list recently active agents, names only
+#   pigeonhole board             list recently active agents and what each is doing
 #   pigeonhole status            read a status line from stdin, then print the board
 #   pigeonhole check             list unread message paths, one per line
 #   pigeonhole send <to>         read body from stdin, deliver to <to>
@@ -23,6 +23,7 @@ set -u
 HOLE="$HOME/.pigeonhole"        # "$HOME", never "~" — tilde does not expand in quotes
 MAIL="$HOLE/mail"
 STALE_DAYS=30                   # mailbox not joined this long is retired
+BOARD_DAYS=2                    # not joined this long: off the roster, still addressable
 ARCHIVE_DAYS=30                 # read/ message older than this is deleted
 
 die() { echo "pigeonhole: $1" >&2; exit 1; }
@@ -52,6 +53,15 @@ whoami_() {
   fi
 }
 
+# The repo half of this agent's name. A collision is almost always with a
+# sibling worktree of the same repo, so the roster puts those first. Empty
+# outside a git repo, which correctly demotes every peer to the second tier.
+myrepo_() {
+  gd=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+  [ -n "$gd" ] || return 0
+  sanitize "$(basename "$(dirname "$gd")")"
+}
+
 # Liveness lives in .joined, which only join_ ever touches. It cannot live on
 # the mailbox directory's mtime: send_ writes a file inside that directory,
 # which bumps its mtime, so any dead workspace someone mailed looked alive and
@@ -63,40 +73,72 @@ join_() {
   printf '%s\n' "$me"
 }
 
-# Every live mailbox directory, one per line. peers_ and board_ share it.
+# Every mailbox on the roster as "<tier><TAB><dir>", most recently joined
+# first. peers_ and board_ share it and strip the tier.
+#
+# BOARD_DAYS, not STALE_DAYS: one horizon doing both jobs put every workspace
+# abandoned in the last month on a roster the hook then truncates to twelve
+# lines, so the twelve went to whoever sorted first alphabetically. A mailbox
+# off the roster stays addressable until sweep_ retires it at STALE_DAYS —
+# that is what lets you hand work to an agent who has not been back yet.
 live_() {
   mkdir -p "$MAIL" || die "cannot create $MAIL"   # first run on a fresh machine
   # maxdepth 2 keeps .retired/<name>/.joined out; the .* guard keeps any other
   # dot-directory at the top level out.
-  find "$MAIL" -mindepth 2 -maxdepth 2 -name '.joined' -mtime "-$STALE_DAYS" 2>/dev/null |
+  found=$(find "$MAIL" -mindepth 2 -maxdepth 2 -name '.joined' -mtime "-$BOARD_DAYS" 2>/dev/null)
+  [ -n "$found" ] || return 0        # ls -t with no arguments would list $PWD
+  repo=$(myrepo_)
+  # ls -t rather than stat: mtime formatting is stat -f %m on BSD and
+  # stat -c %Y on GNU, and this script runs on both.
+  # ponytail: past ARG_MAX xargs splits and each ls -t sorts its own batch, so
+  # ordering degrades at a few thousand mailboxes. Lower BOARD_DAYS if you get
+  # there; sorting mtimes without stat is not worth writing before then.
+  printf '%s\n' "$found" | tr '\n' '\0' | xargs -0 ls -t 2>/dev/null |
     while IFS= read -r s; do
       d=$(dirname "$s")
-      case "$(basename "$d")" in .*) continue ;; esac
-      printf '%s\n' "$d"
-    done | sort
+      p=$(basename "$d")
+      case "$p" in .*) continue ;; esac
+      case "${repo:+$p}" in
+        "$repo"-*) printf '0\t%s\n' "$d" ;;
+        *)         printf '1\t%s\n' "$d" ;;
+      esac
+    done
 }
 
 peers_() {
   me=$(whoami_)
-  live_ | while IFS= read -r d; do
+  live_ | cut -f2- | while IFS= read -r d; do
     p=$(basename "$d")
     [ "$p" = "$me" ] && continue
     printf '%s\n' "$p"
   done
 }
 
+# Ranked: same repo before other repos, and within each, an agent who said
+# what it is doing before a bare name. A bare sibling worktree still outranks
+# a statused stranger — you can collide with the sibling.
+#
+# Four greps rather than a stable sort on a key column: it is the same split
+# the hook already used, and live_ has done the ordering within each group.
 board_() {
   me=$(whoami_)
-  live_ | while IFS= read -r d; do
+  TAB=$(printf '\t')            # a pattern in ${x#...} is not printf, so \t there is a literal backslash-t
+  ranked=$(live_ | while IFS= read -r l; do
+    t=${l%%"$TAB"*}
+    d=${l#*"$TAB"}
     p=$(basename "$d")
     [ "$p" = "$me" ] && continue
     s=''
     [ -f "$d/.status" ] && s=$(head -n 1 "$d/.status")
     if [ -n "$s" ]; then
-      printf '%s: %s\n' "$p" "$s"
+      printf '%s0\t%s: %s\n' "$t" "$p" "$s"
     else
-      printf '%s\n' "$p"
+      printf '%s1\t%s\n' "$t" "$p"
     fi
+  done)
+  [ -n "$ranked" ] || return 0
+  for k in 00 01 10 11; do
+    printf '%s\n' "$ranked" | grep "^$k" | cut -f2-
   done
 }
 
@@ -213,7 +255,8 @@ doctor_() {
     say "you:" "not in a git repo — identity would be '$(whoami_)' from the directory name"
   fi
 
-  say "live:" "$(peers_ | wc -l | tr -d ' ') peer(s)"
+  say "roster:" "$(peers_ | wc -l | tr -d ' ') peer(s) joined in the last $BOARD_DAYS day(s)"
+  say "off roster:" "$(find "$MAIL" -mindepth 2 -maxdepth 2 -name '.joined' -mtime "+$BOARD_DAYS" 2>/dev/null | wc -l | tr -d ' ') quiet but still addressable"
   say "stale:" "$(find "$MAIL" -mindepth 2 -maxdepth 2 -name '.joined' -mtime "+$STALE_DAYS" 2>/dev/null | wc -l | tr -d ' ') awaiting retirement"
   say "retired:" "$(find "$MAIL/.retired" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ') mailbox(es)"
 

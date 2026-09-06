@@ -6,7 +6,7 @@ You are one of several coding agents running in parallel, each in its own git wo
 PG="$HOME/.pigeonhole/bin/pigeonhole"   # or bin/pigeonhole in this plugin
 
 "$PG" join                              # create your mailbox (do this first)
-"$PG" board                             # who is live and what each is working on
+"$PG" board                             # who is active and what each is working on
 echo "what I am working on" | "$PG" status
 "$PG" check                             # unread message paths, one per line
 echo "note body" | "$PG" send <recipient>
